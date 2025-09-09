@@ -1,68 +1,145 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import axios from "axios";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
 
-function ReportForm() {
-  const [selectedDate, setSelectedDate] = useState(null);
-  const [limit, setLimit] = useState("");
-  const [message, setMessage] = useState("");
+export default function ReportGenerator() {
+  const [jsonFile, setJsonFile] = useState(null);
+  const [jsonContent, setJsonContent] = useState(null);
+  const fileInputRef = useRef(null);
 
-  const handleGenerateReport = async () => {
-    if (!selectedDate || !limit) {
-      setMessage("Please select a date and enter a limit.");
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    setJsonFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsedJson = JSON.parse(e.target.result);
+        setJsonContent(parsedJson);
+        console.log("Uploaded JSON:", parsedJson);
+      } catch (error) {
+        alert("Invalid JSON file. Please upload a valid JSON.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleClear = () => {
+    setJsonFile(null);
+    setJsonContent(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = null;
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!jsonContent) {
+      alert("Please upload a JSON file before generating report.");
       return;
     }
 
     try {
-      const formattedDate = selectedDate.toISOString().split("T")[0]; // yyyy-MM-dd
+      const response = await axios.post(
+        "http://localhost:8080/api/v1/reports/generate",
+        jsonContent,
+        { responseType: "blob" }
+      );
 
-      const response = await axios.post("http://localhost:8080/api/v1/reports/generate", {
-        businessDate: formattedDate,
-        limit: parseInt(limit, 10),
-      });
-
-      setMessage(`Report generated successfully: ${response.data.reportName}`);
-
-      // If backend provides file download URL
-      if (response.data.fileUrl) {
-        window.open(response.data.fileUrl, "_blank");
-      }
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", "report.xlsx");
+      document.body.appendChild(link);
+      link.click();
     } catch (error) {
-      setMessage("Failed to generate report. Try again.");
+      console.error("Error generating report:", error);
+      alert("Failed to generate report. Check console for details.");
     }
   };
 
   return (
-    <div style={{ margin: "50px", padding: "20px", border: "1px solid #ccc", borderRadius: "10px" }}>
-      <h2>Generate Report</h2>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        height: "100vh",
+        backgroundColor: "#f0f2f5"
+      }}
+    >
+      <div
+        style={{
+          padding: "30px",
+          background: "white",
+          borderRadius: "10px",
+          boxShadow: "0 0 10px rgba(0,0,0,0.1)",
+          width: "400px",
+          textAlign: "center"
+        }}
+      >
+        <h2 style={{ marginBottom: "20px" }}>Excel Report Generator</h2>
 
-      <div style={{ marginBottom: "15px" }}>
-        <label>Date: </label><br />
-        <DatePicker
-          selected={selectedDate}
-          onChange={(date) => setSelectedDate(date)}
-          dateFormat="yyyy-MM-dd"
-        />
+        {/* File Upload */}
+        <div style={{ marginBottom: "15px" }}>
+          <label style={{ display: "block", marginBottom: "5px" }}>
+            Upload JSON Input:
+          </label>
+          <input
+            type="file"
+            accept=".json"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+          />
+        </div>
+
+        {/* JSON Preview */}
+        {jsonContent && (
+          <pre
+            style={{
+              background: "#f4f4f4",
+              padding: "10px",
+              borderRadius: "5px",
+              maxHeight: "200px",
+              overflow: "auto",
+              textAlign: "left"
+            }}
+          >
+            {JSON.stringify(jsonContent, null, 2)}
+          </pre>
+        )}
+
+        {/* Buttons */}
+        <div style={{ display: "flex", gap: "10px", marginTop: "15px" }}>
+          <button
+            onClick={handleGenerate}
+            style={{
+              padding: "10px",
+              backgroundColor: "#28a745",
+              color: "white",
+              border: "none",
+              cursor: "pointer",
+              borderRadius: "5px",
+              flex: 1
+            }}
+          >
+            Generate Report
+          </button>
+
+          <button
+            onClick={handleClear}
+            style={{
+              padding: "10px",
+              backgroundColor: "#dc3545",
+              color: "white",
+              border: "none",
+              cursor: "pointer",
+              borderRadius: "5px",
+              flex: 1
+            }}
+          >
+            Clear
+          </button>
+        </div>
       </div>
-
-      <div style={{ marginBottom: "15px" }}>
-        <label>Limit: </label><br />
-        <input
-          type="number"
-          value={limit}
-          onChange={(e) => setLimit(e.target.value)}
-          placeholder="Enter row limit"
-        />
-      </div>
-
-      <button onClick={handleGenerateReport} style={{ padding: "10px 20px", cursor: "pointer" }}>
-        Generate Excel
-      </button>
-
-      {message && <p style={{ marginTop: "20px" }}>{message}</p>}
     </div>
   );
 }
-
-export default ReportForm;
